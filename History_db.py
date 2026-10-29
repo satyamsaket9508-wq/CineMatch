@@ -1,16 +1,6 @@
 """
-CineMatch history database (SQLite, no extra install needed).
-
-Stores every movie you open, plus the filter settings you used, in
-`cinematch_history.db` next to app.py.
-
-Table: history
-    id            INTEGER  primary key
-    title         TEXT     movie title
-    viewed_at     TEXT     UTC timestamp (YYYY-MM-DD HH:MM:SS)
-    n_picks       INTEGER  "How many picks" slider value
-    min_rating    REAL     minimum-rating filter used
-    genres        TEXT     comma-separated genre filters used (may be empty)
+CineMatch History: everything a user searches or opens is stored in SQLite.
+The table is defined in history.sql; the database file is cinematch_history.db.
 """
 import sqlite3
 from contextlib import closing
@@ -25,30 +15,29 @@ def _connect():
     return conn
 
 
+SCHEMA_FILE = Path(__file__).parent / "history.sql"
+
+
 def init_db():
-    """Create the table if it does not exist yet. Safe to call on every run."""
+    """Create the history table from history.sql the first time. Safe to call on every run."""
     with closing(_connect()) as conn, conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS history (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                title       TEXT    NOT NULL,
-                viewed_at   TEXT    NOT NULL DEFAULT (datetime('now')),
-                n_picks     INTEGER,
-                min_rating  REAL,
-                genres      TEXT    DEFAULT ''
-            )
-            """
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_history_title ON history(title)")
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'history'"
+        ).fetchone()
+        if not exists:
+            conn.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))
+        # upgrade an older database that was created before the `source` column existed
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(history)")]
+        if "source" not in cols:
+            conn.execute("ALTER TABLE history ADD COLUMN source TEXT NOT NULL DEFAULT 'search'")
 
 
-def add_view(title, n_picks=None, min_rating=None, genres=None):
+def add_view(title, source="search", n_picks=None, min_rating=None, genres=None):
     """Record that a movie was opened."""
     with closing(_connect()) as conn, conn:
         conn.execute(
-            "INSERT INTO history (title, n_picks, min_rating, genres) VALUES (?, ?, ?, ?)",
-            (title, n_picks, min_rating, ", ".join(genres or [])),
+            "INSERT INTO history (title, source, n_picks, min_rating, genres) VALUES (?, ?, ?, ?, ?)",
+            (title, source, n_picks, min_rating, ", ".join(genres or [])),
         )
 
 
@@ -86,7 +75,7 @@ def all_rows():
     """Full history, newest first (used for CSV download)."""
     with closing(_connect()) as conn:
         rows = conn.execute(
-            "SELECT id, title, viewed_at, n_picks, min_rating, genres FROM history ORDER BY id DESC"
+            "SELECT id, title, source, viewed_at, n_picks, min_rating, genres FROM history ORDER BY id DESC"
         ).fetchall()
     return [dict(r) for r in rows]
 
