@@ -20,9 +20,12 @@ import streamlit as st
 import streamlit.components.v1 as components
 from sklearn.metrics.pairwise import cosine_similarity
 
+import History_db
+
 st.set_page_config(page_title="CineMatch · Find your next obsession", page_icon="🎬", layout="wide")
 
 BASE = Path(__file__).parent
+History_db.init_db()
 GENRES = ["Action", "Adventure", "Animation", "Comedy", "Crime", "Documentary", "Drama", "Family", "Fantasy",
           "History", "Horror", "Music", "Mystery", "Romance", "Science Fiction", "Thriller", "War", "Western"]
 MOODS = {"Action": "💥", "Adventure": "🧭", "Animation": "🧸", "Comedy": "😂", "Crime": "🕵️", "Drama": "🎭",
@@ -317,6 +320,43 @@ li[role="option"]:hover,li[aria-selected="true"]{background-color:#2a2150!import
 #cm-glow{position:fixed;width:520px;height:520px;border-radius:50%;pointer-events:none;z-index:1;transform:translate(-50%,-50%);
  background:radial-gradient(circle,rgba(160,102,255,.2),rgba(255,46,99,.08) 40%,transparent 68%);transition:opacity .3s}
 #cm-dust{position:fixed;inset:0;z-index:1;pointer-events:none}
+
+/* ── v2 upgrades: tiles, match ring, compare, taste bars ── */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;margin:0 0 1.2rem}
+.tile{padding:.9rem 1.1rem;border-radius:16px;background:linear-gradient(135deg,rgba(255,255,255,.09),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.1);
+  backdrop-filter:blur(8px);transition:.3s;animation:rise .6s ease both}
+.tile:hover{transform:translateY(-5px);border-color:rgba(8,217,214,.55);box-shadow:0 16px 36px rgba(8,217,214,.16)}
+.tile b{display:block;font-family:'Bebas Neue',Impact,'Arial Narrow',sans-serif;font-size:1.9rem;letter-spacing:.05em;color:var(--gold);line-height:1.1}
+.tile span{color:var(--mut);font-size:.66rem;letter-spacing:.18em;text-transform:uppercase}
+@media(max-width:800px){.tiles{grid-template-columns:repeat(2,1fr)}}
+.stat{transition:.3s;position:relative;overflow:hidden}
+.stat::before{content:"";position:absolute;left:0;top:0;height:3px;width:100%;background:linear-gradient(90deg,var(--a),var(--gold),var(--b));background-size:200% 100%;animation:flow 5s linear infinite}
+.stat:hover{transform:translateY(-5px);box-shadow:0 18px 40px rgba(160,102,255,.22)}
+
+.ring{position:absolute;right:.8rem;bottom:.85rem;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;
+  background:conic-gradient(var(--b) calc(var(--p)*1%),rgba(255,255,255,.16) 0);box-shadow:0 0 16px rgba(8,217,214,.35)}
+.ring::before{content:"";position:absolute;inset:4px;border-radius:50%;background:#0a0a15}
+.ring b{position:relative;font-size:.64rem;font-weight:800;color:#fff}
+.ring.big{position:relative;right:auto;bottom:auto;width:132px;height:132px;margin:0 auto}
+.ring.big::before{inset:9px}.ring.big b{font-size:1.7rem;font-family:'Bebas Neue',Impact,sans-serif;letter-spacing:.04em}
+a.card .info.m .t,a.card .info.m .g,a.card .info.m .why{padding-right:3.1rem}
+
+.vs{display:grid;grid-template-columns:1fr 190px 1fr;gap:1.2rem;align-items:center;padding:1.6rem;border-radius:24px;margin:.6rem 0 1rem;
+  background:linear-gradient(135deg,rgba(255,255,255,.08),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.12);box-shadow:0 30px 70px rgba(0,0,0,.5);animation:rise .6s ease both}
+.vs .side h3{font-family:'Bebas Neue',Impact,sans-serif;font-size:2rem;letter-spacing:.06em;margin:.2rem 0 .5rem;line-height:1}
+.vs .mid{text-align:center}.vs .verdict{margin-top:.7rem;font-weight:800;letter-spacing:.1em;font-size:.78rem;text-transform:uppercase;color:var(--b)}
+.hbar{height:8px;border-radius:9px;background:rgba(255,255,255,.12);overflow:hidden;margin:.35rem 0 .7rem}
+.hbar i{display:block;height:100%;background:linear-gradient(90deg,var(--b),var(--a));border-radius:9px;box-shadow:0 0 12px var(--b)}
+.lbl{font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--mut)}
+.shared{margin:.4rem 0 1.4rem;padding:1rem 1.2rem;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);display:flex;flex-wrap:wrap;gap:.45rem;align-items:center}
+@media(max-width:900px){.vs{grid-template-columns:1fr}}
+
+.bars{display:flex;flex-direction:column;gap:.7rem;margin:.6rem 0 1.4rem}
+.bars .row{display:grid;grid-template-columns:140px 1fr 46px;align-items:center;gap:.9rem;font-weight:700;font-size:.88rem}
+.bars .track{height:14px;border-radius:9px;background:rgba(255,255,255,.1);overflow:hidden}
+.bars .track i{display:block;height:100%;border-radius:9px;background:linear-gradient(90deg,var(--a),var(--c),var(--b));box-shadow:0 0 14px rgba(160,102,255,.6);animation:grow .9s cubic-bezier(.2,.8,.2,1) both}
+.bars .n{color:var(--gold);text-align:right}
+@keyframes grow{from{width:0}}
 </style>
 <div class="aurora"><i></i><i></i><i></i></div><div class="grain"></div>
 """
@@ -365,6 +405,70 @@ def gradient_for(title):
     return f"linear-gradient(145deg,hsl({h % 360},72%,34%),hsl({(h // 360) % 360},78%,15%))"
 
 
+def for_you(n=18):
+    """Personalised picks: average the TF-IDF vectors of your recent history, then find the closest films."""
+    seen = [t for t, _ in History_dbHistory_db.titles_viewed(10) if t in INDICES]
+    idxs = [_idx(t) for t in seen]
+    if not idxs:
+        return []
+    profile = np.asarray(MATRIX[idxs].mean(axis=0))
+    sims = cosine_similarity(profile, MATRIX).ravel()
+    sims[idxs] = -1
+    top = [i for i in np.argsort(sims)[::-1][:n] if sims[i] > 0]
+    out = DF.iloc[top].copy()
+    out["score"] = sims[top]
+    return out.to_dict("records")
+
+
+def taste_profile():
+    """Genre counts across everything you have opened (weighted by how often)."""
+    counts = {}
+    for t, times in history_db.titles_viewed():
+        if t in INDICES:
+            for g in split_genres(get_movie(t)["genres"]):
+                counts[g] = counts.get(g, 0) + times
+    return sorted(counts.items(), key=lambda kv: -kv[1])
+
+
+def tiles_html(m):
+    pop = max(1, 100 - round((DF["popularity"] < m["popularity"]).mean() * 100))
+    rank = int((DF["vote_average"] > m["vote_average"]).sum()) + 1
+    items = [(f'{m["vote_average"]:.1f}<small style="font-size:1rem;color:#9a9ab0"> /10</small>', "Audience rating"),
+             (f"#{rank:,}", f"Rating rank of {len(DF):,}"), (f"Top {pop}%", "Popularity"),
+             (str(len(split_genres(m["genres"]))), "Genres blended")]
+    return '<div class="tiles">' + "".join(f'<div class="tile"><b>{v}</b><span>{k}</span></div>' for v, k in items) + "</div>"
+
+
+def compare_html(a, b):
+    ma, mb = get_movie(a), get_movie(b)
+    ia, ib = _idx(a), _idx(b)
+    pct = round(float(cosine_similarity(MATRIX[ia], MATRIX[ib])[0, 0]) * 100)
+    verdict = "Very similar" if pct >= 30 else "Some overlap" if pct >= 12 else "Quite different"
+    ga, gb = split_genres(ma["genres"]), split_genres(mb["genres"])
+    common = [g for g in ga if g in gb]
+
+    def side(m, gs):
+        chips = "".join(f'<span class="chip">{html.escape(g)}</span>' for g in gs)
+        pop = max(1, 100 - round((DF["popularity"] < m["popularity"]).mean() * 100))
+        return (f'<div class="side"><h3>{html.escape(m["title"])}</h3><div class="meta">{chips}</div>'
+                f'<div class="lbl">Rating · {m["vote_average"]:.1f} / 10</div><div class="hbar"><i style="width:{m["vote_average"] * 10}%"></i></div>'
+                f'<div class="lbl">Popularity · top {pop}%</div><div class="hbar"><i style="width:{101 - pop}%"></i></div></div>')
+
+    shared = "".join(f'<span class="chip dna">{html.escape(w)}</span>' for w in shared_terms(ia, ib, 8))
+    same = "".join(f'<span class="chip star">{html.escape(g)}</span>' for g in common)
+    return (f'<div class="vs">{side(ma, ga)}<div class="mid"><div class="ring big" style="--p:{min(100, pct * 2)}"><b>{pct}%</b></div>'
+            f'<div class="verdict">{verdict}</div></div>{side(mb, gb)}</div>'
+            f'<div class="shared"><span class="lbl">🧬 Shared DNA</span>{shared or "<span class=lbl>no shared keywords</span>"}</div>'
+            f'<div class="shared"><span class="lbl">🎭 Genres in common</span>{same or "<span class=lbl>none</span>"}</div>')
+
+
+def taste_html(profile):
+    top = profile[0][1]
+    rows = "".join(f'<div class="row"><span>{html.escape(g)}</span><div class="track"><i style="width:{round(c / top * 100)}%"></i></div><span class="n">{c}</span></div>'
+                   for g, c in profile[:8])
+    return f'<div class="bars">{rows}</div>'
+
+
 def card_html(m, info, rank=None, show_sim=True):
     t = html.escape(m["title"])
     poster = (info or {}).get("poster")
@@ -374,14 +478,14 @@ def card_html(m, info, rank=None, show_sim=True):
     sim = why = ""
     if show_sim and "score" in m:
         pct = max(1, min(100, round(m["score"] * 100)))
-        sim = f'<div class="bar"><i style="width:{min(100, pct * 2)}%"></i></div><div class="sim">{pct}% SIMILAR</div>'
+        sim = f'<div class="ring" style="--p:{min(100, pct * 2)}"><b>{pct}%</b></div>'
         if m.get("shared"):
             why = f'<div class="why">🧬 {html.escape(", ".join(m["shared"][:2]))}</div>'
     tip = html.escape(f'{m["title"]} — ★{m["vote_average"]:.1f}', quote=True)
     rk = f'<div class="rank">{rank}</div>' if rank else ""
     delay = f"animation-delay:{(rank or 1) * 0.05:.2f}s"
     return (f'<a class="card" title="{tip}" target="_self" style="{delay}" href="?movie={quote(m["title"])}">{bg}<div class="fade"></div>{rk}'
-            f'<div class="rate">★ {m["vote_average"]:.1f}</div><div class="info"><div class="t">{t}</div>'
+            f'<div class="rate">★ {m["vote_average"]:.1f}</div><div class="info{" m" if sim else ""}"><div class="t">{t}</div>'
             f'<div class="g">{genres}</div>{sim}{why}</div></a>')
 
 
@@ -438,14 +542,47 @@ with st.sidebar:
                                 "It is not a rating for the selected movie. 0 = show everything.")
     st.caption("Showing all ratings" if min_rating == 0 else f"Hiding picks rated below ★ {min_rating:.1f} / 10")
     genres = st.multiselect("Must include genres", GENRES)
+    sort_by = st.selectbox("Sort picks by", ["Best match", "Highest rated", "Most popular"])
     c1, c2 = st.columns(2)
     if c1.button("🎲 Surprise"):
         st.query_params.clear()
         st.query_params["movie"] = DF[DF["vote_average"] >= 6.5].sample(1)["title"].iloc[0]
+        st.session_state["next_source"] = "surprise"
         st.rerun()
     if c2.button("🏠 Home"):
         st.query_params.clear()
         st.rerun()
+    st.markdown("---")
+
+    # ── History (SQLite) ──
+    # Every search / opened movie is stored once (not on every slider rerun).
+    if current and st.session_state.get("last_logged") != current:
+        history_db.add_view(current, source=st.session_state.pop("next_source", "click"), n_picks=n, min_rating=min_rating, genres=genres)
+        st.session_state["last_logged"] = current
+    if not current:
+        st.session_state["last_logged"] = None
+
+    st.markdown("### 📜 History")
+    recent_items = history_db.recent(8)
+    if recent_items:
+        rows_html = []
+        for r in recent_items:
+            badge = f' <span style="opacity:.6">×{r["times"]}</span>' if r["times"] > 1 else ""
+            rows_html.append(f'<div style="margin:4px 0"><a target="_self" href="?movie={quote(r["title"])}">'
+                             f'{html.escape(r["title"])}</a>{badge}</div>')
+        links = "".join(rows_html)
+        st.markdown(links, unsafe_allow_html=True)
+        top = history_db.most_viewed(1)
+        st.caption(f"❤️ {len(history_db.wl_list())} saved · {history_db.count()} views logged · most viewed: {top[0]['title']}")
+        h1, h2 = st.columns(2)
+        h1.download_button("⬇ CSV", pd.DataFrame(history_db.all_rows()).to_csv(index=False),
+                           file_name="cinematch_history.csv", mime="text/csv")
+        if h2.button("🗑 Clear"):
+            history_db.clear()
+            st.session_state["last_logged"] = None
+            st.rerun()
+    else:
+        st.caption("Nothing yet. Open a movie and it will appear here.")
     st.markdown("---")
     st.caption("Model: TF-IDF (1–2 grams, 5000 features) + cosine similarity.")
 
@@ -459,20 +596,46 @@ choice = st.selectbox("Search", TITLES, index=TITLES.index(current) if current e
 if choice and choice != current:
     st.query_params.clear()
     st.query_params["movie"] = choice
+    st.session_state["next_source"] = "search"
     st.rerun()
 
 # ═════════════════════════════ PAGES ═════════════════════════════
 if current:
     movie = get_movie(current)
     hero(movie)
+    st.markdown(tiles_html(movie), unsafe_allow_html=True)
+    if st.session_state.get("flash"):
+        st.toast(st.session_state.pop("flash"))
+    saved = history_db.wl_has(current)
+    w1, _w2 = st.columns([1, 3])
+    if w1.button("💔 Remove from watchlist" if saved else "❤️ Save to watchlist", key="wl_btn"):
+        (history_db.wl_remove if saved else history_db.wl_add)(current)
+        st.session_state["flash"] = "Removed from watchlist" if saved else "Saved to your watchlist ❤️"
+        st.rerun()
+
     recs = recommend(current, n=n, min_rating=min_rating, genres=genres)
-    section("Because you liked", current)
-    if recs:
-        grid(recs, numbered=True)
-        st.caption("💡 Hover for 3D tilt · 🧬 shows the words that link each film to your pick · click any poster to hop to it.")
-    else:
-        st.markdown('<div class="empty">😕 No matches with these filters. Lower the minimum rating or remove a genre.</div>',
-                    unsafe_allow_html=True)
+    if sort_by == "Highest rated":
+        recs.sort(key=lambda r: -r["vote_average"])
+    elif sort_by == "Most popular":
+        recs.sort(key=lambda r: -r["popularity"])
+
+    tab_r, tab_c = st.tabs(["🎯 Recommendations", "⚔️ Compare"])
+    with tab_r:
+        section("Because you liked", current)
+        if recs:
+            grid(recs, numbered=True)
+            st.caption("💡 Hover for 3D tilt · the ring shows how closely each film matches · 🧬 shows the words that link it to your pick.")
+        else:
+            st.markdown('<div class="empty">😕 No matches with these filters. Lower the minimum rating or remove a genre.</div>',
+                        unsafe_allow_html=True)
+    with tab_c:
+        section("Head to", "head")
+        other = st.selectbox("Compare with", [t for t in TITLES if t != current], index=None, key="cmp",
+                             placeholder="🔍  Pick another movie to compare…", label_visibility="collapsed")
+        if other:
+            st.markdown(compare_html(current, other), unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="empty">⚔️ Choose a second movie to see how similar the two really are.</div>', unsafe_allow_html=True)
 
 elif mood:
     section(f"{MOODS[mood]} {mood}", "portal")
@@ -482,12 +645,18 @@ else:
     st.markdown(f'<div class="stats"><div class="stat"><strong>{len(DF):,}</strong><span>Films indexed</span></div>'
                 f'<div class="stat"><strong>{MATRIX.shape[1]:,}</strong><span>TF-IDF features</span></div>'
                 f'<div class="stat"><strong>{len(GENRES)}</strong><span>Genres</span></div>'
-                f'<div class="stat"><strong>Instant</strong><span>Recommendations</span></div></div>', unsafe_allow_html=True)
+                f'<div class="stat"><strong>{history_db.count()}</strong><span>Your views</span></div></div>', unsafe_allow_html=True)
+    past = history_db.recent(12)
+    if past:
+        section("Your", "History")
+        st.markdown('<div class="moods">' + "".join(
+            f'<a class="mood" target="_self" href="?movie={quote(r["title"])}"><span class="e">🕘</span>{html.escape(r["title"])}</a>'
+            for r in past) + "</div>", unsafe_allow_html=True)
     section("Pick a", "mood")
     st.markdown('<div class="moods">' + "".join(
         f'<a class="mood" target="_self" href="?mood={quote(g)}"><span class="e">{e}</span>{g}</a>' for g, e in MOODS.items()) + "</div>",
         unsafe_allow_html=True)
-    t1, t2, t3 = st.tabs(["🔥 Trending", "🏆 Top rated", "💎 Hidden gems"])
+    t1, t2, t3, t4, t5, t6 = st.tabs(["🔥 Trending", "🏆 Top rated", "💎 Hidden gems", "✨ For you", "❤️ Watchlist", "📊 Your taste"])
     with t1:
         grid(trending(18), show_sim=False)
     with t2:
@@ -495,5 +664,29 @@ else:
     with t3:
         st.caption("Highly rated films that flew under the radar.")
         grid(hidden_gems(18), show_sim=False)
+    with t4:
+        picks = for_you(18)
+        if picks:
+            st.caption("Built from the average taste of the movies in your History.")
+            grid(picks)
+        else:
+            st.markdown('<div class="empty">✨ Open a few movies and personalised picks will appear here.</div>', unsafe_allow_html=True)
+    with t5:
+        saved_movies = [get_movie(t) for t in history_db.wl_list() if t in INDICES]
+        if saved_movies:
+            grid(saved_movies, show_sim=False)
+        else:
+            st.markdown('<div class="empty">❤️ Your watchlist is empty. Open a movie and tap “Save to watchlist”.</div>', unsafe_allow_html=True)
+    with t6:
+        prof = taste_profile()
+        if prof:
+            st.markdown(f'<div class="tiles"><div class="tile"><b>{prof[0][0]}</b><span>Favourite genre</span></div>'
+                        f'<div class="tile"><b>{len(history_db.titles_viewed())}</b><span>Movies explored</span></div>'
+                        f'<div class="tile"><b>{history_db.count()}</b><span>Total views</span></div>'
+                        f'<div class="tile"><b>{len(history_db.wl_list())}</b><span>Saved</span></div></div>', unsafe_allow_html=True)
+            section("Your genre", "DNA")
+            st.markdown(taste_html(prof), unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="empty">📊 Your taste profile builds as you explore movies.</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="foot">CineMatch · TF-IDF × cosine similarity · posters by TMDB</div>', unsafe_allow_html=True)

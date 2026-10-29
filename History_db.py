@@ -26,6 +26,10 @@ def init_db():
         ).fetchone()
         if not exists:
             conn.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS watchlist ("
+            "title TEXT PRIMARY KEY, added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+        )
         # upgrade an older database that was created before the `source` column existed
         cols = [r["name"] for r in conn.execute("PRAGMA table_info(history)")]
         if "source" not in cols:
@@ -88,3 +92,34 @@ def count():
 def clear():
     with closing(_connect()) as conn, conn:
         conn.execute("DELETE FROM history")
+
+
+# ───────────────────────── Watchlist ─────────────────────────
+def wl_add(title):
+    with closing(_connect()) as conn, conn:
+        conn.execute("INSERT OR IGNORE INTO watchlist (title) VALUES (?)", (title,))
+
+
+def wl_remove(title):
+    with closing(_connect()) as conn, conn:
+        conn.execute("DELETE FROM watchlist WHERE title = ?", (title,))
+
+
+def wl_has(title):
+    with closing(_connect()) as conn:
+        return conn.execute("SELECT 1 FROM watchlist WHERE title = ?", (title,)).fetchone() is not None
+
+
+def wl_list():
+    """Saved titles, newest first."""
+    with closing(_connect()) as conn:
+        return [r["title"] for r in conn.execute("SELECT title FROM watchlist ORDER BY rowid DESC")]
+
+
+def titles_viewed(limit=200):
+    """Distinct titles from history, newest first (used for personalised picks and taste profile)."""
+    with closing(_connect()) as conn:
+        rows = conn.execute(
+            "SELECT title, COUNT(*) AS times FROM history GROUP BY title ORDER BY MAX(id) DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [(r["title"], r["times"]) for r in rows]
