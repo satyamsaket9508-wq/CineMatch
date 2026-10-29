@@ -3,7 +3,7 @@
 Run:   pip install streamlit scikit-learn pandas numpy scipy requests python-dotenv
        streamlit run app.py
 Needs in the same folder: df.pkl, indices.pkl, tfidf.pkl, tfidf_matrix.pkl, movies.csv (or tmdb_ids.pkl)
-Optional: TMDB_API_KEY in a .env file, in Streamlit secrets, or pasted in the sidebar.
+Optional: TMDB_API_KEY in a .env file, in Streamlit secrets (no key box in the UI).
 """
 import hashlib
 import html
@@ -413,7 +413,7 @@ def hero(m):
     dna_row = f'<div class="dnaRow">🧬 Movie DNA &nbsp;{words}</div>' if words else ""
     st.markdown(
         f'<div class="hero"><div class="bg" style="{bgcss}"></div><div class="shade"></div><div class="scan"></div><div class="body">'
-        f'<div class="meta"><span class="chip star">★ {m["vote_average"]:.1f}</span>{extra}{chips}</div>'
+        f'<div class="meta"><span class="chip star">★ {m["vote_average"]:.1f} / 10</span>{extra}{chips}</div>'
         f'<h1>{t}</h1>{tl}<div class="ov">{html.escape(m["overview"])}</div>{cast}{dna_row}'
         f'<a class="btn" target="_blank" href="{yt}">▶ &nbsp;Watch trailer</a>'
         f'<a class="btn ghost" target="_self" href="?">✕ &nbsp;Close</a></div></div>', unsafe_allow_html=True)
@@ -433,7 +433,10 @@ mood = qp.get("mood") if qp.get("mood") in MOODS else None
 with st.sidebar:
     st.markdown("### 🎛️ Tune your taste")
     n = st.slider("How many picks", 6, 30, 12, step=2)
-    min_rating = st.slider("Minimum rating ★", 0.0, 9.0, 5.5, step=0.5)
+    min_rating = st.slider("Only show picks rated at least ★", 0.0, 9.0, 0.0, step=0.5, format="%.1f",
+                           help="Filters the recommendations by their TMDB score (out of 10). "
+                                "It is not a rating for the selected movie. 0 = show everything.")
+    st.caption("Showing all ratings" if min_rating == 0 else f"Hiding picks rated below ★ {min_rating:.1f} / 10")
     genres = st.multiselect("Must include genres", GENRES)
     c1, c2 = st.columns(2)
     if c1.button("🎲 Surprise"):
@@ -444,20 +447,6 @@ with st.sidebar:
         st.query_params.clear()
         st.rerun()
     st.markdown("---")
-    st.markdown("##### 🔑 TMDB API key")
-    typed = st.text_input("TMDB key", type="password", label_visibility="collapsed",
-                          placeholder="Paste key for real posters")
-    if typed and typed.strip() != key_store()["key"]:
-        key_store()["key"] = typed.strip()
-        st.rerun()
-    if key_store()["key"]:
-        ok = tmdb_movie(int(DF["tmdb_id"].iloc[0]), key_store()["key"])
-        st.markdown('<div class="status">🟢 <b>TMDB connected</b><br>Live posters, cast & trailers.</div>' if ok else
-                    '<div class="status">🔴 <b>Key rejected</b><br>Check it at themoviedb.org/settings/api</div>',
-                    unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="status">🟡 <b>No key yet</b><br>Using generated artwork. The app is fully usable.</div>',
-                    unsafe_allow_html=True)
     st.caption("Model: TF-IDF (1–2 grams, 5000 features) + cosine similarity.")
 
 # ═════════════════════════════ HEADER ═════════════════════════════
