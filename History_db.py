@@ -3,10 +3,23 @@ CineMatch History: everything a user searches or opens is stored in SQLite.
 The table is defined in history.sql; the database file is cinematch_history.db.
 """
 import sqlite3
+import tempfile
 from contextlib import closing
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "cinematch_history.db"
+def _pick_db_path():
+    """Store the DB next to the app; fall back to the temp folder if that folder is read-only."""
+    here = Path(__file__).parent
+    try:
+        probe = here / ".write_test"
+        probe.write_text("ok")
+        probe.unlink()
+        return here / "cinematch_history.db"
+    except OSError:
+        return Path(tempfile.gettempdir()) / "cinematch_history.db"
+
+
+DB_PATH = _pick_db_path()
 
 
 def _connect():
@@ -15,7 +28,21 @@ def _connect():
     return conn
 
 
-SCHEMA_FILE = Path(__file__).parent / "history.sql"
+# The same schema lives in history.sql for reference, but it is embedded here so the app
+# never depends on a file name (Linux hosts like Streamlit Cloud are case-sensitive).
+SCHEMA = """
+CREATE TABLE history (
+    id INTEGER PRIMARY KEY,
+    title TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'search',
+    viewed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    n_picks INTEGER,
+    min_rating REAL,
+    genres TEXT DEFAULT ''
+);
+CREATE INDEX idx_history_title ON history (title);
+CREATE INDEX idx_history_time ON history (viewed_at);
+"""
 
 
 def init_db():
@@ -25,7 +52,7 @@ def init_db():
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'history'"
         ).fetchone()
         if not exists:
-            conn.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))
+            conn.executescript(SCHEMA)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS watchlist ("
             "title TEXT PRIMARY KEY, added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"

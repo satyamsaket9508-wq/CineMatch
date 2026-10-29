@@ -10,4 +10,5 @@ __pycache__/
 .streamlit/secrets.toml
 .DS_Store
 Thumbs.db
+cinematch_history.db
 '@ | Set-Content -Encoding utf8 .gitignore
