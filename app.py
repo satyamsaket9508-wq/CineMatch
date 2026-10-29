@@ -20,12 +20,15 @@ import streamlit as st
 import streamlit.components.v1 as components
 from sklearn.metrics.pairwise import cosine_similarity
 
-import History_db
+try:  # accepts history_db.py or History_db.py (Linux hosts are case-sensitive)
+    import history_db
+except ImportError:
+    import History_db as history_db
 
 st.set_page_config(page_title="CineMatch · Find your next obsession", page_icon="🎬", layout="wide")
 
 BASE = Path(__file__).parent
-History_db.init_db()
+history_db.init_db()
 GENRES = ["Action", "Adventure", "Animation", "Comedy", "Crime", "Documentary", "Drama", "Family", "Fantasy",
           "History", "Horror", "Music", "Mystery", "Romance", "Science Fiction", "Thriller", "War", "Western"]
 MOODS = {"Action": "💥", "Adventure": "🧭", "Animation": "🧸", "Comedy": "😂", "Crime": "🕵️", "Drama": "🎭",
@@ -407,7 +410,7 @@ def gradient_for(title):
 
 def for_you(n=18):
     """Personalised picks: average the TF-IDF vectors of your recent history, then find the closest films."""
-    seen = [t for t, _ in History_dbHistory_db.titles_viewed(10) if t in INDICES]
+    seen = [t for t, _ in history_db.titles_viewed(10) if t in INDICES]
     idxs = [_idx(t) for t in seen]
     if not idxs:
         return []
